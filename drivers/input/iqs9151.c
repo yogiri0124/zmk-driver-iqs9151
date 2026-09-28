@@ -186,6 +186,9 @@ struct iqs9151_motion_history {
 
 struct iqs9151_data {
     const struct device *dev;
+#ifdef CONFIG_INPUT_IQS9151_REPORT_TOUCH
+    bool touch_reported;
+#endif
     struct gpio_callback gpio_cb;
     struct k_work work;
     struct k_work_delayable one_finger_click_work;
@@ -1940,6 +1943,20 @@ static int iqs9151_read_frame(const struct iqs9151_config *cfg,
     return 0;
 }
 
+/* Report INPUT_BTN_TOUCH only when the touch state changes (CONFIG_INPUT_IQS9151_REPORT_TOUCH). */
+static void iqs9151_report_touch(struct iqs9151_data *data, bool touching) {
+#ifdef CONFIG_INPUT_IQS9151_REPORT_TOUCH
+    if (data->touch_reported == touching) {
+        return;
+    }
+    data->touch_reported = touching;
+    iqs9151_report_key_event(data->dev, INPUT_BTN_TOUCH, touching, true, K_FOREVER);
+#else
+    ARG_UNUSED(data);
+    ARG_UNUSED(touching);
+#endif
+}
+
 static bool iqs9151_handle_show_reset(struct iqs9151_data *data,
                                       const struct iqs9151_frame *frame) {
     const struct device *dev = data->dev;
@@ -1950,6 +1967,7 @@ static bool iqs9151_handle_show_reset(struct iqs9151_data *data,
 
     LOG_WRN("SHOW_RESET detected: info=0x%04x", frame->info_flags);
     iqs9151_reset_gesture_states(data, dev, true);
+    iqs9151_report_touch(data, false);
     iqs9151_inertia_cancel(&data->inertia_scroll, &data->inertia_scroll_work);
     iqs9151_inertia_cancel(&data->inertia_cursor, &data->inertia_cursor_work);
     iqs9151_ema_reset(&data->scroll_ema_x_fp, &data->scroll_ema_y_fp);
@@ -2227,6 +2245,11 @@ static void iqs9151_process_frame(struct iqs9151_data *data,
         return;
     }
 
+    /* Touch press is reported before this frame's motion/gesture events. */
+    if (frame->finger_count > 0U) {
+        iqs9151_report_touch(data, true);
+    }
+
     released_from_hold =
         iqs9151_update_gesture_sessions(data, frame, &prev_frame, &two_result);
     suppress_cursor_tail =
@@ -2263,6 +2286,11 @@ static void iqs9151_process_frame(struct iqs9151_data *data,
                                suppress_cursor_tail);
     iqs9151_update_prev_frame(data, frame, &prev_frame);
     iqs9151_push_finger_history(data, frame->finger_count, now_ms);
+
+    /* Touch release is reported after this frame's release/gesture events. */
+    if (frame->finger_count == 0U) {
+        iqs9151_report_touch(data, false);
+    }
 }
 
 static void iqs9151_work_cb(struct k_work *work) {

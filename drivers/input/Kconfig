@@ -20,6 +20,16 @@ config INPUT_IQS9151_LOG_LEVEL
       0: none, 1: err, 2: wrn, 3: inf, 4: dbg.
       Defaults to INPUT_LOG_LEVEL to follow input subsystem policy.
 
+config INPUT_IQS9151_REPORT_TOUCH
+    bool "Report touch state as INPUT_BTN_TOUCH"
+    default n
+    help
+      Report INPUT_BTN_TOUCH (value 1) when the first finger touches the trackpad
+      and INPUT_BTN_TOUCH (value 0) when the last finger leaves it (or the device resets).
+      ZMK's input listener ignores this key code; it is meant for input processors
+      or input callbacks that need to know whether the trackpad is being touched
+      (e.g. keeping an auto mouse layer active while a finger rests on the pad).
+
 config INPUT_IQS9151_INIT_PRIORITY
     int "IQS9151 init priority"
     default 80
